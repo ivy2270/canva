@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>強化版畫板：儲存修復穩定版 V32.0</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script> 
+    <style>
+        /* --- CSS 樣式 (保持V31.0一致) --- */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+            background-color: #f4f7f9;
+        }
+        h2 {
+            color: #333;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .tool-selection, .drawing-options, .utility-options, .color-palettes {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            padding: 10px;
+            background-color: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            flex-wrap: wrap;
+        }
+        .tool-selection button, .utility-options button, .utility-options label {
+            padding: 8px 15px;
+            cursor: pointer;
+            border: 1px solid #007bff;
+            border-radius: 4px;
+            background-color: #f0f8ff;
+            color: #007bff;
+            font-weight: 600;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .utility-options #save-image-btn { 
+            background-color: #17a2b8; 
+            color: white; 
+            border-color: #17a2b8;
+        }
+        .tool-selection button.active {
+            background-color: #007bff;
+            color: white;
+            border-color: #0056b3;
+            box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+        }
+        .utility-options label[for="background-image-input"] {
+            background-color: #eafaea;
+            border-color: #28a745;
+            color: #28a745;
+        }
+        .color-palette-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 2px solid #ccc;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            padding: 0;
+            margin: 0 2px;
+            opacity: 0.8;
+            box-sizing: content-box;
+            background-color: currentColor; 
+        }
+
+        /* 畫布容器樣式 */
+        #canvas-container {
+            width: 900px;
+            height: 600px;
+            border: 1px solid #ccc;
+            background-color: #ffffff; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: contain; 
+            position: relative; 
+        }
+
+        #c {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>🛠️ 網頁互動畫板</h2>
+
+    <div class="controls">
+        
+        <h3>當前工具: <span id="current-tool-display" style="color: #007bff; font-weight: bold;">(筆刷)</span></h3>
+        <div class="tool-selection" id="tool-bar">
+            <button id="brush-mode-btn" data-mode="brush" class="active">✏️ 筆刷</button>
+            <button id="highlighter-mode-btn" data-mode="highlighter">🖍️ 螢光筆</button>
+            <button id="eraser-mode-btn" data-mode="eraser">🗑️ 橡皮擦</button>
+            <button id="select-mode-btn" data-mode="select">🖱️ 選擇/移動</button>
+        </div>
+
+        <div class="drawing-options">
+            <label for="drawing-color">顏色：</label>
+            <input type="color" id="drawing-color" value="#007bff">
+
+            <label for="line-width">粗細 (px)：</label>
+            <input type="range" value="5" min="1" max="100" id="line-width">
+            <span id="line-width-display">5</span>
+        </div>
+
+        <div class="color-palettes">
+            <span style="font-weight: 600;">筆劃:</span>
+            <button class="color-palette-btn" data-target="brush" data-color="#007bff" style="background-color: #007bff;"></button>
+            <button class="color-palette-btn" data-target="brush" data-color="#dc3545" style="background-color: #dc3545;"></button>
+            <button class="color-palette-btn" data-target="brush" data-color="#28a745" style="background-color: #28a745;"></button>
+            <button class="color-palette-btn" data-target="brush" data-color="#000000" style="background-color: #000000;"></button>
+            <span style="border-left: 1px solid #eee; padding-left: 12px;"></span>
+            <span style="font-weight: 600;">螢光筆:</span>
+            <button class="color-palette-btn" data-target="highlighter" data-color="#ffff00" style="background-color: #ffff00;"></button>
+            <button class="color-palette-btn" data-target="highlighter" data-color="#79f2f2" style="background-color: #79f2f2;"></button>
+            <button class="color-palette-btn" data-target="highlighter" data-color="#ff99e6" style="background-color: #ff99e6;"></button>
+        </div>
+
+        <div class="utility-options">
+            <button id="add-text-btn">📝 插入文字方塊</button>
+            
+            <label for="background-image-input">🖼️ 導入圖片作底圖</label>
+            <input type="file" id="background-image-input" accept="image/*" style="display: none;">
+            <button id="clear-background-btn">清除底圖</button>
+            <button id="clear-all-drawings-btn">🧹 清除所有筆跡</button>
+            <button id="delete-selected-btn">❌ 刪除選取物件</button>
+            <button id="save-image-btn">💾 儲存為 PNG</button>
+        </div>
+        
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="c" width="900" height="600"></canvas>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // --- 核心變數與初始化 ---
+            const canvas = new fabric.Canvas('c', { 
+                isDrawingMode: false,
+                preserveObjectStacking: true, 
+                backgroundColor: 'transparent' 
+            });
+
+            const pencilBrush = new fabric.PencilBrush(canvas);
+            let brushSettings = {
+                brush: { brush: pencilBrush, color: '#007bff', width: 5, composite: 'source-over' },
+                highlighter: { brush: pencilBrush, color: '#ffff0080', width: 30, composite: 'source-over' }, 
+                eraser: { 
+                    brush: pencilBrush, 
+                    color: 'rgba(150, 150, 150, 0.5)', 
+                    width: 25, 
+                    composite: 'source-over' 
+                }, 
+                select: { brush: pencilBrush, color: '#000000', width: 1, composite: 'source-over' }
+            };
+            let currentMode = 'brush'; 
+
+            // --- DOM 元素快取 (V31.0 邏輯) ---
+            const canvasContainer = document.getElementById('canvas-container'); 
+            const toolDisplay = document.getElementById('current-tool-display');
+            const colorEl = document.getElementById('drawing-color');
+            const widthRangeEl = document.getElementById('line-width');
+            const widthDisplayEl = document.getElementById('line-width-display');
+            const saveImageBtn = document.getElementById('save-image-btn'); 
+            
+            const toolButtons = {
+                brush: document.getElementById('brush-mode-btn'),
+                highlighter: document.getElementById('highlighter-mode-btn'),
+                eraser: document.getElementById('eraser-mode-btn'),
+                select: document.getElementById('select-mode-btn'),
+            };
+
+            
+            // ** V31.0 橡皮擦/文字堆疊邏輯 (保持不變) **
+            canvas.on('path:created', function(e) {
+                const path = e.path;
+                path.isEraserPath = (currentMode === 'eraser');
+                
+                if (currentMode === 'eraser') {
+                    path.set({ 
+                        globalCompositeOperation: 'destination-out',
+                        selectable: false,
+                        evented: false,
+                        stroke: 'rgba(0,0,0,1)' 
+                    }); 
+                    
+                    // 將橡皮擦路徑提到所有非文字物件之上
+                    canvas.getObjects().forEach(obj => {
+                        if (obj.type !== 'i-text') {
+                            canvas.bringToFront(obj);
+                        }
+                    });
+                    canvas.bringToFront(path);
+                    
+                } else {
+                    path.set({ selectable: false, evented: false }); 
+                    canvas.bringToFront(path);
+                }
+                
+                // 確保所有文字物件在最最頂層 (防擦除)
+                canvas.getObjects().filter(obj => obj.type === 'i-text').forEach(textObj => {
+                    canvas.bringToFront(textObj);
+                });
+
+                canvas.renderAll(); 
+            });
+
+            // 雙擊文字進入編輯 (保持 V31.0 邏輯)
+            canvas.on('mouse:dblclick', function(options) {
+                if (options.target && options.target.type === 'i-text') {
+                    options.target.enterEditing();
+                    canvas.renderAll();
+                }
+            });
+
+
+            /**
+             * 核心功能函數：設定工具模式 (邏輯不變)
+             */
+            function setToolMode(mode) {
+                currentMode = mode;
+                
+                toolDisplay.textContent = `(${mode.toUpperCase()})`;
+                document.querySelectorAll('.tool-selection button').forEach(btn => btn.classList.remove('active'));
+                const activeBtn = toolButtons[mode];
+                if (activeBtn) {
+                    activeBtn.classList.add('active');
+                }
+                
+                if (mode === 'select') {
+                    canvas.isDrawingMode = false;
+                    canvas.selection = true;
+                    canvas.forEachObject(obj => {
+                        const isSelectable = (obj.type === 'i-text' || (obj.type === 'path' && obj.isEraserPath === false));
+                        obj.set({ selectable: isSelectable, evented: isSelectable });
+                    });
+                    canvas.defaultCursor = 'default';
+                    colorEl.disabled = true;
+                    widthRangeEl.disabled = true;
+                    return; 
+                }
+                
+                canvas.isDrawingMode = true; 
+                canvas.selection = false;
+                canvas.forEachObject(obj => obj.set({ selectable: false, evented: false })); 
+                colorEl.disabled = (mode === 'eraser');
+                widthRangeEl.disabled = false;
+                canvas.defaultCursor = (mode === 'eraser') ? 'crosshair' : 'default';
+
+                const settings = brushSettings[mode];
+                widthRangeEl.value = settings.width;
+                widthDisplayEl.textContent = settings.width;
+                
+                canvas.freeDrawingBrush = settings.brush;
+                settings.brush.width = settings.width;
+                canvas.freeDrawingBrush.color = settings.color; 
+                canvas.freeDrawingBrush.globalCompositeOperation = settings.composite;
+                
+                if (mode !== 'eraser') {
+                    colorEl.value = settings.color.substring(0, 7); 
+                }
+            }
+            
+            // --- 其他事件監聽器 (保持V31.0一致) ---
+            toolButtons.brush.addEventListener('click', () => setToolMode('brush'));
+            toolButtons.highlighter.addEventListener('click', () => setToolMode('highlighter'));
+            toolButtons.eraser.addEventListener('click', () => setToolMode('eraser'));
+            toolButtons.select.addEventListener('click', () => setToolMode('select'));
+            
+            // ... (顏色、粗細、底圖、清除、文字插入、刪除邏輯保持不變) ...
+            
+            document.getElementById('drawing-color').addEventListener('change', function() {
+                if (currentMode === 'brush' || currentMode === 'highlighter') {
+                    const newColor = this.value;
+                    let finalColor = newColor;
+                    if (currentMode === 'highlighter') {
+                        finalColor = newColor + '80';
+                    }
+                    brushSettings[currentMode].color = finalColor;
+                    canvas.freeDrawingBrush.color = finalColor; 
+                }
+            });
+
+            document.getElementById('line-width').addEventListener('input', function() {
+                const width = parseInt(this.value, 10) || 1;
+                widthDisplayEl.textContent = width;
+                brushSettings[currentMode].width = width;
+                canvas.freeDrawingBrush.width = width;
+            });
+
+            document.querySelectorAll('.color-palette-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const target = this.dataset.target;
+                    const newColor = this.dataset.color;
+                    if (target === 'highlighter') {
+                        brushSettings.highlighter.color = newColor + '80';
+                        brushSettings.highlighter.width = 30;
+                        setToolMode('highlighter');
+                    } else {
+                        brushSettings.brush.color = newColor;
+                        brushSettings.brush.width = 5;
+                        setToolMode('brush');
+                    }
+                });
+            });
+
+            document.getElementById('background-image-input').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = function(f) {
+                    canvasContainer.style.backgroundImage = `url(${f.target.result})`;
+                    canvas.backgroundColor = 'transparent';
+                    canvas.renderAll(); 
+                };
+                reader.readAsDataURL(file);
+            });
+
+            document.getElementById('clear-background-btn').addEventListener('click', function() {
+                canvasContainer.style.backgroundImage = 'none';
+                canvas.backgroundColor = '#ffffff'; 
+                canvas.renderAll();
+            });
+
+            document.getElementById('clear-all-drawings-btn').addEventListener('click', function() {
+                const objectsToRemove = canvas.getObjects().filter(obj => 
+                    (obj.type === 'path' || obj.type === 'i-text')
+                );
+                canvas.remove(...objectsToRemove);
+                canvas.renderAll();
+            });
+
+            document.getElementById('add-text-btn').addEventListener('click', function() {
+                setToolMode('select'); 
+                const text = new fabric.IText('點擊輸入文字', { 
+                    left: 50, top: 50, fontSize: 24, fill: '#333333', editable: true,
+                });
+                canvas.add(text);
+                canvas.setActiveObject(text);
+                canvas.bringToFront(text); 
+                text.enterEditing(); 
+                canvas.renderAll();
+            });
+
+            const deleteSelectedBtn = document.getElementById('delete-selected-btn');
+            deleteSelectedBtn.addEventListener('click', function() {
+                const activeObjects = canvas.getActiveObjects();
+                if (activeObjects.length > 0) {
+                    canvas.remove(...activeObjects);
+                    canvas.discardActiveObject().renderAll();
+                }
+            });
+
+            document.addEventListener('keydown', (e) => {
+                const activeObject = canvas.getActiveObject();
+                if ((e.key === 'Delete' || e.key === 'Backspace') && activeObject && (!activeObject.isEditing || activeObject.type !== 'i-text')) {
+                    deleteSelectedBtn.click();
+                    e.preventDefault();
+                }
+            });
+
+// ** V33.0 儲存圖片功能核心修正：精準快照與完整恢復 **
+            saveImageBtn.addEventListener('click', async function() { 
+                if (typeof html2canvas === 'undefined') {
+                    alert("錯誤: html2canvas 庫未載入，無法執行截圖功能。");
+                    return;
+                }
+                
+                saveImageBtn.disabled = true;
+                setToolMode('select'); // 退出繪圖模式
+
+                // 1. 儲存原始畫布狀態和選中狀態
+                const originalCanvasJSON = canvas.toJSON(['isEraserPath']);
+                canvas.discardActiveObject(); // 確保不會截到選中框
+                
+                // 2. 找出需要固化的物件（筆跡和橡皮擦路徑）和需要保留的物件（文字）
+                const nonTextObjects = canvas.getObjects().filter(obj => obj.type !== 'i-text');
+                const textObjects = canvas.getObjects().filter(obj => obj.type === 'i-text');
+                
+                let snapshotImage = null;
+
+                if (nonTextObjects.length > 0) {
+                    // 3. 生成快照：只包含筆跡和橡皮擦路徑
+                    // 暫時將所有文字物件從畫布中移除
+                    canvas.remove(...textObjects);
+                    canvas.renderAll(); 
+
+                    const drawingSnapshotURL = canvas.toDataURL({
+                        format: 'png',
+                        multiplier: 2 // 提高固化圖片的解析度
+                    });
+
+                    // 重新將文字物件加回來，準備恢復
+                    canvas.add(...textObjects);
+                    canvas.renderAll(); 
+
+                    // 4. 將快照轉為 fabric.Image 物件
+                    snapshotImage = await new Promise(resolve => {
+                        fabric.Image.fromURL(drawingSnapshotURL, img => {
+                            img.set({
+                                left: 0, top: 0,
+                                selectable: false, evented: false,
+                                originX: 'left', originY: 'top',
+                                scaleX: canvas.width / img.width,
+                                scaleY: canvas.height / img.height
+                            });
+                            resolve(img);
+                        });
+                    });
+                }
+                
+                // 5. 準備截圖畫布：
+                
+                // 儲存當前畫布上的物件列表 (用於後續恢復)
+                const objectsBeforeCleanup = canvas.getObjects().slice();
+                
+                // 清空畫布，準備加入快照和文字
+                canvas.clear(); 
+                
+                if (snapshotImage) {
+                    canvas.add(snapshotImage);
+                    canvas.sendToBack(snapshotImage); // 送到底層
+                }
+
+                // 重新將文字物件加回畫布
+                textObjects.forEach(text => {
+                    canvas.add(text);
+                    canvas.bringToFront(text);
+                });
+                
+                canvas.renderAll(); // 渲染截圖準備畫面
+                
+                // 6. 執行 html2canvas 截圖
+                try {
+                    const canvasShot = await html2canvas(canvasContainer, {
+                        useCORS: true, 
+                        scale: 2, 
+                        logging: false 
+                    });
+
+                    // 7. 儲存圖片 (V31.0 邏輯不變)
+                    const dataURL = canvasShot.toDataURL('image/png');
+                    const link = document.createElement('a');
+                    link.href = dataURL;
+                    link.download = `drawing-${Date.now()}.png`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                } catch (error) {
+                    alert("截圖失敗。請確認瀏覽器支援或圖片來源是否允許跨域存取。");
+                    console.error("截圖錯誤:", error);
+                }
+
+                // 8. 恢復原始狀態：使用 JSON 完整還原
+                canvas.clear(); // 再次清空，以確保 loadFromJSON 是乾淨的載入
+                canvas.loadFromJSON(originalCanvasJSON, () => {
+                    canvas.renderAll();
+                    // V31.0 的激活物件恢復邏輯被省略，因為 loadFromJSON 會處理
+                    saveImageBtn.disabled = false;
+                    console.log("畫布已從原始狀態 JSON 完整恢復。");
+                });
+            });
+
+
+            // 初始載入
+            setToolMode('brush');
+            canvasContainer.style.backgroundColor = '#ffffff'; 
+            canvas.renderAll();
+        });
+    </script>
+
+</body>
+</html>
