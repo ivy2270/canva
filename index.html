@@ -258,7 +258,7 @@
 
 
 <script>
-    // *** JavaScript 腳本 - V38.6 修正版 (儲存圖片包含底圖，動態檔名) ***
+    // *** JavaScript 腳本 - V38.9 最終整合版 (修復結構錯誤、包含所有功能) ***
     document.addEventListener('DOMContentLoaded', () => {
         
         // --- 核心變數與初始化 ---
@@ -278,6 +278,8 @@
         });
 
         const pencilBrush = new fabric.PencilBrush(canvas);
+        
+        // V38.8: brushSettings 獨立儲存每種模式的寬度 (width)
         let brushSettings = {
             brush: { brush: pencilBrush, color: '#007bff', width: 5, composite: 'source-over' },
             highlighter: { brush: pencilBrush, color: '#ffff0080', width: 30, composite: 'source-over' }, 
@@ -292,7 +294,7 @@
         };
         let currentMode = 'brush'; 
 
-        // --- DOM 元素快取 (確保所有元素都正確引用) ---
+        // --- DOM 元素快取 ---
         const canvasContainer = document.getElementById('canvas-container'); 
         const toolDisplay = document.getElementById('current-tool-display');
         const colorEl = document.getElementById('drawing-color');
@@ -319,7 +321,7 @@
         const panModeBtn = document.getElementById('pan-mode-btn'); 
 
         
-        // ** 繪圖/文字堆疊邏輯 (保持不變) **
+        // ** 繪圖/文字堆疊邏輯 **
         canvas.on('path:created', function(e) {
             const path = e.path;
             path.isEraserPath = (currentMode === 'eraser');
@@ -351,7 +353,7 @@
             canvas.renderAll(); 
         });
 
-        // 雙擊文字進入編輯 (保持不變)
+        // 雙擊文字進入編輯
         canvas.on('mouse:dblclick', function(options) {
             if (options.target && options.target.type === 'i-text' && currentMode === 'select') {
                 options.target.enterEditing();
@@ -361,7 +363,7 @@
 
 
         /**
-         * 核心功能函數：設定工具模式 (保持不變)
+         * 核心功能函數：設定工具模式
          */
         function setToolMode(mode) {
             currentMode = mode;
@@ -407,18 +409,20 @@
                 return; 
             }
             
-            // --- 繪圖/擦除模式 ---
+            // --- 繪圖/擦除模式 (Brush, Highlighter, Eraser) ---
             canvas.isDrawingMode = true; 
             colorEl.disabled = (mode === 'eraser');
             widthRangeEl.disabled = false;
             canvas.defaultCursor = (mode === 'eraser') ? 'crosshair' : 'default';
 
             const settings = brushSettings[mode];
+            
+            // V38.8 修正：讀取該模式儲存的 width
             widthRangeEl.value = settings.width;
             widthNumberEl.value = settings.width; 
             
             canvas.freeDrawingBrush = settings.brush;
-            settings.brush.width = settings.width;
+            canvas.freeDrawingBrush.width = settings.width; // 應用該模式的粗細
             canvas.freeDrawingBrush.color = settings.color; 
             canvas.freeDrawingBrush.globalCompositeOperation = settings.composite;
             
@@ -426,16 +430,17 @@
                 colorEl.value = settings.color.substring(0, 7); 
             }
             canvas.renderAll();
-        }
-        
-        // --- 核心事件監聽器綁定 (第一欄，保持不變) ---
+        } // <--- V38.9 修正：確保 setToolMode 函數在這裡正確結束
+
+
+        // --- 核心事件監聽器綁定 (第一欄) ---
         brushModeBtn.addEventListener('click', () => setToolMode('brush'));
         highlighterModeBtn.addEventListener('click', () => setToolMode('highlighter'));
         eraserModeBtn.addEventListener('click', () => setToolMode('eraser'));
         selectModeBtn.addEventListener('click', () => setToolMode('select'));
         panModeBtn.addEventListener('click', () => setToolMode('pan')); 
         
-        // 繪圖設定 (保持不變)
+        // 繪圖設定 (顏色)
         document.getElementById('drawing-color').addEventListener('change', function() {
             if (currentMode === 'brush' || currentMode === 'highlighter') {
                 const newColor = this.value;
@@ -443,46 +448,91 @@
                 if (currentMode === 'highlighter') {
                     finalColor = newColor + '80';
                 }
+                
+                // V38.8 修正：更新顏色設定
                 brushSettings[currentMode].color = finalColor;
                 canvas.freeDrawingBrush.color = finalColor; 
             }
         });
 
-        // 筆刷粗細同步 (保持不變)
-        function updateBrushWidth(width) {
-            width = Math.max(1, Math.min(100, parseInt(width, 10) || 1));
-            widthRangeEl.value = width;
-            widthNumberEl.value = width;
-            brushSettings[currentMode].width = width;
-            if (canvas.isDrawingMode) {
-                canvas.freeDrawingBrush.width = width;
+
+        /**
+         * 核心功能：更新筆刷粗細 (V38.8: 儲存粗細到 mode)
+         * @param {number} width - 新的筆刷寬度
+         * @param {boolean} immediate - 是否立即更新
+         */
+        function updateBrushWidth(width, immediate = false) {
+            
+            if (currentMode !== 'brush' && currentMode !== 'highlighter' && currentMode !== 'eraser') {
+                return;
+            }
+            
+            if (immediate) { // 僅當滑塊拖動、或數字輸入框 blur/Enter 時才執行
+                
+                // 執行最小/最大限制，確保是有效數字
+                width = Math.max(1, Math.min(100, parseInt(width, 10) || 1));
+                
+                // 同步 DOM
+                widthRangeEl.value = width;
+                widthNumberEl.value = width;
+
+                // V38.8 修正：將新的寬度儲存在當前模式的 brushSettings 中
+                brushSettings[currentMode].width = width;
+                
+                // 更新畫布
+                if (canvas.isDrawingMode) {
+                    canvas.freeDrawingBrush.width = width;
+                }
             }
         }
-        widthRangeEl.addEventListener('input', function() { updateBrushWidth(this.value); });
-        widthNumberEl.addEventListener('change', function() { updateBrushWidth(this.value); });
-        widthNumberEl.addEventListener('input', function() { updateBrushWidth(this.value); });
         
-        // 調色盤點擊 (保持不變)
+        /**
+         * 處理數字輸入框的輸入和驗證邏輯 (V38.7 修正：允許輸入時刪除)
+         */
+        function handleWidthInput(e) {
+            const width = parseInt(e.target.value, 10);
+
+            if (e.type === 'input') {
+                // 在輸入過程中，只同步滑塊，不觸發筆刷更新
+                if (isNaN(width)) {
+                    widthRangeEl.value = 1; 
+                } else {
+                    widthRangeEl.value = Math.min(100, Math.max(0, width)); 
+                }
+            } else if (e.type === 'blur' || (e.type === 'keydown' && e.key === 'Enter')) {
+                // 離開或按 Enter 時，執行最終驗證和筆刷更新
+                updateBrushWidth(e.target.value, true);
+            }
+        }
+        
+        // 筆刷粗細事件綁定 
+        widthRangeEl.addEventListener('input', function() { updateBrushWidth(this.value, true); }); // 滑塊：立即更新
+        widthNumberEl.addEventListener('input', handleWidthInput); // 數字框：輸入時僅同步滑塊
+        widthNumberEl.addEventListener('blur', handleWidthInput); // 數字框：離開時驗證並更新
+        widthNumberEl.addEventListener('keydown', handleWidthInput); // 數字框：按 Enter 時驗證並更新
+
+
+        // 調色盤點擊
         document.querySelectorAll('.color-palette-btn').forEach(button => {
             button.addEventListener('click', function() {
                 const target = this.dataset.target;
                 const newColor = this.dataset.color;
+                
+                // V38.8 修正：只更新顏色設定並切換模式，保持粗細不變
                 if (target === 'highlighter') {
                     brushSettings.highlighter.color = newColor + '80';
-                    brushSettings.highlighter.width = 30; 
                     setToolMode('highlighter');
                 } else {
                     brushSettings.brush.color = newColor;
-                    brushSettings.brush.width = 5; 
                     setToolMode('brush');
                 }
             });
         });
 
 
-        // --- 第二欄功能區塊 (V38.5 完整邏輯，儲存圖片重新修改) ---
+        // --- 第二欄功能區塊 (V38.6 完整邏輯) ---
 
-        // 1. 調整尺寸功能 (保持不變)
+        // 1. 調整尺寸功能
         resizeCanvasBtn.addEventListener('click', () => { 
             const newWidth = parseInt(newWidthEl.value, 10);
             const newHeight = parseInt(newHeightEl.value, 10);
@@ -498,7 +548,7 @@
         });
 
 
-        // 2. 導入底圖 (保持不變)
+        // 2. 導入底圖
         bgImageInput.addEventListener('change', function(e) { 
             const file = e.target.files[0];
             if (!file) return;
@@ -516,14 +566,14 @@
             e.target.value = null; 
         });
 
-        // 3. 清除底圖 (DOM 背景) (保持不變)
+        // 3. 清除底圖 (DOM 背景)
         clearBgBtn.addEventListener('click', function() { 
             canvasContainer.style.backgroundImage = 'none';
             canvas.backgroundColor = '#ffffff'; 
             canvas.renderAll();
         });
 
-        // 4. 清除所有繪圖/文字 (保持不變)
+        // 4. 清除所有繪圖/文字
         clearAllDrawingsBtn.addEventListener('click', function() { 
             const objectsToRemove = canvas.getObjects().filter(obj => 
                 (obj.type === 'path' || obj.type === 'i-text' || obj.type === 'rect')
@@ -532,7 +582,7 @@
             canvas.renderAll();
         });
 
-        // 5. 插入文字方塊 (保持不變)
+        // 5. 插入文字方塊
         addTextBtn.addEventListener('click', function() {
             setToolMode('select'); 
             const text = new fabric.IText('點擊輸入文字', { 
@@ -547,7 +597,7 @@
             canvas.renderAll();
         });
 
-        // 6. 刪除選取物件 (保持不變)
+        // 6. 刪除選取物件
         deleteSelectedBtn.addEventListener('click', function() { 
             const activeObjects = canvas.getActiveObjects();
             if (activeObjects.length > 0) {
@@ -556,7 +606,7 @@
             }
         });
 
-        // 7. 鍵盤刪除 (保持不變)
+        // 7. 鍵盤刪除
         document.addEventListener('keydown', (e) => { 
             const activeObject = canvas.getActiveObject();
             if ((e.key === 'Delete' || e.key === 'Backspace') && activeObject && !activeObject.isEditing) {
@@ -565,37 +615,29 @@
             }
         });
         
-        // 8. 儲存圖片功能核心邏輯 【V38.6 關鍵修正】
+        // 8. 儲存圖片功能核心邏輯 (V38.6)
         saveImageBtn.addEventListener('click', async function() { 
-            // 啟用按鈕，避免重複點擊
             saveImageBtn.disabled = true;
 
-            // 確保 html2canvas 庫已經載入
             if (typeof html2canvas === 'undefined') {
                 alert("錯誤: html2canvas 庫未載入，無法執行截圖功能。請確認已引入此庫。");
                 saveImageBtn.disabled = false;
                 return;
             }
 
-            // 在截圖前，將當前活動的物件取消選取，確保截圖完整
             canvas.discardActiveObject();
             canvas.renderAll();
 
             try {
-                // 使用 html2canvas 截圖整個 canvasContainer，這樣就能包含 DOM 背景圖
                 const canvasShot = await html2canvas(canvasContainer, {
-                    useCORS: true, // 允許載入跨域圖片，如果背景圖來自外部連結，這很重要
-                    scale: 2,       // 截圖解析度加倍，讓圖片更清晰
-                    logging: false  // 關閉控制台日誌
+                    useCORS: true, 
+                    scale: 2,       
+                    logging: false  
                 });
 
-                // 將截圖轉換為 Data URL
                 const dataURL = canvasShot.toDataURL('image/png');
-                
-                // 創建一個下載連結
                 const link = document.createElement('a');
                 link.href = dataURL;
-                // 【V38.6 修正】使用時間戳記作為動態檔名
                 link.download = `drawing-${Date.now()}.png`; 
                 
                 document.body.appendChild(link);
@@ -606,13 +648,12 @@
                 alert("截圖失敗。請確認瀏覽器支援或圖片來源是否允許跨域存取。");
                 console.error("截圖錯誤:", error);
             } finally {
-                // 無論成功或失敗，最後都要重新啟用按鈕
                 saveImageBtn.disabled = false;
             }
         });
 
 
-        // --- 畫布平移邏輯 (保持 V38.4 的修正，確認正常運作) ---
+        // --- 畫布平移邏輯 ---
 
         canvas.on('mouse:down', function(opt) {
             const e = opt.e;
