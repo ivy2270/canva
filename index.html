@@ -196,7 +196,27 @@
         
         <h3>當前工具: <span id="current-tool-display" style="color: #007bff; font-weight: bold;">(筆刷)</span></h3>
         
-        <div class="tool-and-style-controls">
+        <div class="utility-options">
+			<button id="fullscreen-btn">🖥️ 全螢幕</button>
+            <button id="add-text-btn">📝 文字方塊</button>
+            
+            <label for="background-image-input">🖼️ 導入底圖</label>
+            <input type="file" id="background-image-input" accept="image/*" style="display: none;">
+            <button id="clear-background-btn">🗑️ 清除底圖</button>
+            <button id="clear-all-drawings-btn">🧹 清除筆跡</button>
+            <button id="delete-selected-btn">❌ 刪除選取</button>
+            
+            <div id="size-controls">
+                <label for="new-width">寬度 (px)：</label>
+                <input type="number" id="new-width" value="900" min="300">
+                <label for="new-height">高度 (px)：</label>
+                <input type="number" id="new-height" value="600" min="300">
+                <button id="resize-canvas-btn">📐 調整尺寸</button>
+            </div>
+            
+            <button id="save-image-btn">💾 儲存為 PNG</button>
+        </div>
+		        <div class="tool-and-style-controls">
             <button id="brush-mode-btn" data-mode="brush" class="active" title="筆刷">
                 <i class="fa-solid fa-paintbrush"></i>
             </button>
@@ -229,26 +249,6 @@
             <button class="color-palette-btn" data-target="highlighter" data-color="#ffff00" style="background-color: #ffff00;" title="黃色螢光筆"></button>
             <button class="color-palette-btn" data-target="highlighter" data-color="#79f2f2" style="background-color: #79f2f2;" title="藍色螢光筆"></button>
         </div>
-
-        <div class="utility-options">
-            <button id="add-text-btn">📝 插入文字方塊</button>
-            
-            <label for="background-image-input">🖼️ 導入底圖</label>
-            <input type="file" id="background-image-input" accept="image/*" style="display: none;">
-            <button id="clear-background-btn">🗑️ 清除底圖</button>
-            <button id="clear-all-drawings-btn">🧹 清除筆跡</button>
-            <button id="delete-selected-btn">❌ 刪除選取</button>
-            
-            <div id="size-controls">
-                <label for="new-width">寬度 (px)：</label>
-                <input type="number" id="new-width" value="900" min="300">
-                <label for="new-height">高度 (px)：</label>
-                <input type="number" id="new-height" value="600" min="300">
-                <button id="resize-canvas-btn">📐 調整尺寸</button>
-            </div>
-            
-            <button id="save-image-btn">💾 儲存為 PNG</button>
-        </div>
         
     </div>
 
@@ -261,6 +261,37 @@
     // *** JavaScript 腳本 - V38.9 最終整合版 (修復結構錯誤、包含所有功能) ***
     document.addEventListener('DOMContentLoaded', () => {
         
+		// 找到新增的全螢幕按鈕
+const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+/**
+ * 處理全螢幕邏輯
+ */
+fullscreenBtn.addEventListener('click', () => {
+    const docEl = document.documentElement; // 指向 <html> 元素
+
+    if (!document.fullscreenElement) {
+        // 進入全螢幕模式
+        docEl.requestFullscreen().then(() => {
+            // 進入全螢幕後，如果內容超出視窗，保持可捲動
+            // 這可能會因瀏覽器而異，但通常對 body/html 設置 overflow: auto 有助益
+            document.body.style.overflow = 'auto'; 
+            docEl.style.overflow = 'auto'; 
+            fullscreenBtn.textContent = '🖥️ 退出全螢幕';
+        }).catch(err => {
+            alert(`進入全螢幕失敗: ${err.message} (可能需要使用者互動才能啟用)`);
+        });
+    } else {
+        // 退出全螢幕模式
+        document.exitFullscreen().then(() => {
+            // 恢復原本的捲動設定 (如果有的話)
+            document.body.style.overflow = ''; 
+            docEl.style.overflow = ''; 
+            fullscreenBtn.textContent = '🖥️ 全螢幕';
+        });
+    }
+});
+		
         // --- 核心變數與初始化 ---
         const initialWidth = 900;
         const initialHeight = 600;
