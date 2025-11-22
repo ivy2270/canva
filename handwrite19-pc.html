@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>手寫板</title>
+	<link rel="icon" type="image/svg+xml" href="https://ymdd-image-tw.s3.ap-east-2.amazonaws.com/image/paintbrush-solid-full.svg">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Font Awesome 圖示庫 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* --- CSS 樣式 --- */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+            background-color: #f4f7f9;
+        }
+        h2 {
+            color: #333;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+        }
+        
+        /* V39.2 新增: 主要控制容器與切換按鈕樣式 */
+        .controls-wrapper {
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        #toggle-control-mode {
+            padding: 10px 15px;
+            cursor: pointer;
+            border: 1px solid #6c757d;
+            border-radius: 6px;
+            background-color: #e9ecef;
+            color: #495057;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s;
+            align-self: flex-start; /* 靠左對齊 */
+        }
+        #toggle-control-mode:hover {
+            background-color: #adb5bd;
+        }
+        
+        /* V39.2 核心: 精簡模式與全功能模式的隱藏/顯示 */
+        .simplified-mode #full-control-panel {
+            display: none;
+        }
+        
+        .full-mode #full-control-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* V39.2 新增: 精簡版功能列容器 */
+        .simplified-bar {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            padding: 10px;
+            background-color: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            flex-wrap: wrap; 
+        }
+
+        /* 區塊 1 & 2 合併：工具與樣式控制 (用於全功能模式) */
+        .tool-and-style-controls { 
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            padding: 8px 10px; 
+            background-color: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            flex-wrap: wrap; 
+        }
+
+        /* 實用功能列容器 (用於全功能模式下，非精簡功能的按鈕群組) */
+        .full-options-only {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            padding: 10px;
+            background-color: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            flex-wrap: wrap; 
+        }
+        
+        /* 圖示工具按鈕樣式 */
+        .tool-and-style-controls button[data-mode], 
+        #undo-btn,
+        .template-btn { 
+            padding: 8px 10px; 
+            min-width: 40px; 
+            cursor: pointer;
+            border: 1px solid #007bff;
+            border-radius: 4px;
+            background-color: #f0f8ff; 
+            color: #007bff;
+            font-size: 14px; 
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        /* 確保活動狀態的樣式 */
+        .tool-and-style-controls button[data-mode].active {
+            background-color: #007bff;
+            color: white;
+            border-color: #0056b3;
+            box-shadow: 0 0 5px rgba(0, 123, 255, 0.5);
+        }
+
+        /* 確保 Font Awesome 圖示能被正確著色和縮放 */
+        .tool-and-style-controls button i,
+        #undo-btn i,
+        .template-btn i { 
+            color: inherit; 
+            font-size: 1.2em; 
+            margin-right: 3px; 
+        }
+
+        /* Undo 按鈕的禁用狀態 (Disabled) */
+        #undo-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+            box-shadow: none;
+            background-color: #cccccc;
+            color: #666666;
+            border-color: #aaaaaa;
+        }
+
+        /* 顏色輸入、線寬滑桿 */
+        .tool-and-style-controls input[type="range"] {
+            width: 70px; 
+            margin-right: 5px;
+        }
+        
+        /* 顏色選單按鈕 */
+        .color-palette-btn {
+            width: 25px; 
+            height: 25px;
+            border-radius: 50%;
+            border: 2px solid #ccc;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            padding: 0;
+            margin: 0 1px;
+            opacity: 0.9;
+            box-sizing: content-box;
+            background-color: currentColor; 
+        }
+
+        /* 實用功能按鈕通用樣式 (套用給所有按鈕) */
+        .simplified-bar > button, 
+        .simplified-bar > label[for="background-image-input"],
+        .full-options-only > button,
+        .full-options-only > label[for="background-image-input"] {
+            padding: 8px 15px;
+            cursor: pointer;
+            border: 1px solid #007bff;
+            border-radius: 4px;
+            background-color: #f0f8ff;
+            color: #007bff;
+            font-weight: 600;
+            font-size: 14px; 
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        /* 特殊功能按鈕樣式 */
+        #save-image-btn { 
+            padding: 8px 15px;
+            cursor: pointer;
+            border: 1px solid #17a2b8;
+            border-radius: 4px; 
+            background-color: #17a2b8; 
+            color: white; 
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        #resize-canvas-btn { 
+            padding: 8px 15px;
+            cursor: pointer;
+            border: 1px solid #28a745; 
+            border-radius: 4px;
+            background-color: #28a745; 
+            color: white; 
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        /* 尺寸調整控制項的 Flex 樣式 */
+        #size-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-left: 0; 
+            margin-left: 0; 
+            flex-wrap: wrap; 
+        }
+        
+        #size-controls label {
+            padding: 0;
+            cursor: default;
+            border: none;
+            background-color: transparent;
+            color: #333;
+            font-weight: 600;
+            white-space: nowrap;
+            font-size: 14px;
+        }
+        #size-controls input[type="number"] {
+            width: 70px; 
+            padding: 5px; 
+            border: 1px solid #ccc; 
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+  
+/* V39.1 狀態列 (修正為內容寬度並置中) */
+#status-bar {
+    width: fit-content; /* <--- 1. 讓寬度貼合內容 (現代寫法) */
+    background-color: #333;
+    color: #fff;
+    padding: 5px 15px;
+    font-size: 12px;
+    border-radius: 4px;
+    /* 2. 使用 margin: auto 來取代原有的上下 margin 並實現置中 */
+    margin: 5px auto 10px auto; 
+    text-align: center; 
+}
+
+        /* V39.1 核心: 畫布外層容器 (Fit-to-Screen) */
+        #canvas-wrapper {
+            width: 100%;
+            padding: 10px; 
+            box-sizing: border-box;
+            overflow: visible; 
+            display: flex;
+            justify-content: center; 
+            background-color: #e9e9e9; 
+            border-radius: 8px;
+            border: 1px solid #ccc;
+        }
+
+        /* 畫布容器樣式 (原生 1600x1200 尺寸) */
+        #canvas-container {
+            width: 1600px; 
+            height: 1200px; 
+            border: 1px solid #ccc;
+            background-color: #ffffff; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: contain; 
+            position: relative; 
+            
+            transform-origin: top center; 
+            transition: transform 0.2s ease-out;
+            touch-action: none;
+        }
+
+        #c {
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* 文字背景切換按鈕的啟用狀態樣式 */
+        #text-background-toggle-btn.active {
+            background-color: #f8e1a1; 
+            color: #a0522d; 
+            border-color: #daa520;
+        }
+        
+        /* 樣板標籤 */
+        .template-span {
+            font-weight: 600; 
+            white-space: nowrap;
+            border-left: 1px solid #eee; 
+            padding-left: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>🛠️ 網頁互動畫板</h2>
+
+    <!-- V39.2 核心: 切換按鈕 -->
+    <button id="toggle-control-mode" class="toggle-btn full-mode" title="點擊切換精簡/全功能介面">
+        <i class="fa-solid fa-compress"></i> 切換為精簡版控制項
+    </button>
+    
+    <!-- V39.2 核心: 控制容器，預設為全功能模式 -->
+    <div id="controls-wrapper" class="controls-wrapper full-mode">
+        
+        <!-- 1. 精簡版控制項 (永遠顯示) -->
+        <div class="simplified-bar">
+            <!-- 導入底圖 -->
+            <label for="background-image-input">🖼️ 導入底圖</label>
+            <input type="file" id="background-image-input" accept="image/*" style="display: none;">
+
+            <!-- 文字方塊 & 背景開關 -->
+            <button id="add-text-btn">📝 文字方塊</button>
+            <button id="text-background-toggle-btn" title="切換文字方塊是否有背景 (預設無)">⬜ 背景: 關</button>
+
+            <!-- 樣板裡的四個按鈕 -->
+            <span class="template-span">樣板:</span>
+            <button id="insert-template-text-1-btn" class="template-btn" title="插入 術前 樣板">術前</button>
+            <button id="insert-template-text-2-btn" class="template-btn" title="插入 術中 樣板">術中</button>
+            <button id="insert-template-text-3-btn" class="template-btn" title="插入 術後 樣板">術後</button>
+            <button id="insert-date-stamp-btn" class="template-btn" title="插入今天日期戳章">
+                <i class="fa-solid fa-calendar-day"></i> 日期
+            </button>
+			<button id="undo-btn" disabled title="回上一步 (Undo)">
+                    <i class="fa-solid fa-rotate-left"></i>
+                </button>
+            
+            <span style="border-left: 1px solid #eee; padding-left: 12px;"></span>
+            <!-- 儲存為 JPG -->
+            <button id="save-image-btn">💾 儲存為 JPG</button>
+        </div>
+
+        <!-- 2. 全功能控制面板 (可切換隱藏) -->
+        <div id="full-control-panel">
+            <h3>當前工具: <span id="current-tool-display" style="color: #007bff; font-weight: bold;">(筆刷)</span></h3>
+            
+            <!-- 剩餘的實用功能 (全螢幕、清除等) -->
+            <div class="full-options-only">
+                <button id="fullscreen-btn">🖥️ 全螢幕</button>
+                <button id="clear-background-btn">🗑️ 清除底圖</button>
+                <button id="clear-all-drawings-btn">🧹 清除筆跡</button>
+                <button id="delete-selected-btn">❌ 刪除選取</button>
+                
+                <div id="size-controls">
+                    <label for="new-width">寬度 (px)：</label>
+                    <input type="number" id="new-width" value="1600" min="300"> 
+                    <label for="new-height">高度 (px)：</label>
+                    <input type="number" id="new-height" value="1200" min="300">
+                    <button id="resize-canvas-btn">📐 調整尺寸</button>
+                </div>
+            </div>
+            
+            <!-- 筆刷、顏色、粗細、Undo 等核心工具 -->
+            <div class="tool-and-style-controls">
+                <button id="brush-mode-btn" data-mode="brush" class="active" title="筆刷">
+                    <i class="fa-solid fa-paintbrush"></i>
+                </button>
+                <button id="highlighter-mode-btn" data-mode="highlighter" title="螢光筆">
+                    <i class="fa-solid fa-highlighter"></i>
+                </button>
+                <button id="eraser-mode-btn" data-mode="eraser" title="橡皮擦">
+                    <i class="fa-solid fa-eraser"></i>
+                </button> 
+                <button id="select-mode-btn" data-mode="select" title="選擇/移動">
+                    <i class="fa-solid fa-up-down-left-right"></i>
+                </button>
+                <button data-mode="pan" id="pan-mode-btn" title="移動畫布 (單指拖曳)">
+                    <i class="fas fa-hand-paper"></i> 
+                </button>
+
+                
+                <span style="border-left: 1px solid #eee; padding-left: 12px; font-weight: 600;"></span>
+                
+                <label for="drawing-color" style="font-weight: 600;">顏色:</label>
+                <input type="color" id="drawing-color" value="#007bff">
+
+                <label for="line-width-range" style="font-weight: 600; margin-left: 5px;">粗細:</label>
+                <input type="range" value="5" min="1" max="100" id="line-width-range" style="width: 70px;">
+                <input type="number" value="5" min="1" max="100" id="line-width-number" style="width: 45px; padding: 5px; border: 1px solid #ccc; border-radius: 4px;">
+                
+                <span style="border-left: 1px solid #eee; padding-left: 12px; font-weight: 600;">筆劃:</span>
+                <button class="color-palette-btn" data-target="brush" data-color="#007bff" style="background-color: #007bff;" title="藍色筆劃"></button>
+                <button class="color-palette-btn" data-target="brush" data-color="#000000" style="background-color: #000000;" title="黑色筆劃"></button>
+                
+                <span style="border-left: 1px solid #eee; padding-left: 12px; font-weight: 600;">螢光:</span>
+                <button class="color-palette-btn" data-target="highlighter" data-color="#ffff00" style="background-color: #ffff00;" title="黃色螢光筆"></button>
+                <button class="color-palette-btn" data-target="highlighter" data-color="#79f2f2" style="background-color: #79f2f2;" title="藍色螢光筆"></button>
+            </div>
+        </div>
+        
+    </div>
+    
+    <!-- V39.1 狀態列 -->
+    <div id="status-bar">顯示比例: 100% (原始尺寸: 1600 x 1200)</div>
+
+    <!-- V39.1 核心：響應式包裝容器 (Fit-to-Screen) -->
+    <div id="canvas-wrapper">
+        <div id="canvas-container">
+            <canvas id="c" width="1600" height="1200"></canvas>
+        </div>
+    </div>
+
+
+    <script>
+        // *** JavaScript 腳本 - V39.2 (新增控制項切換) ***
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // --- 1. 核心變數 ---
+            const initialWidth = 1600;  
+            const initialHeight = 1200; 
+            
+            const BG_PADDING = 10;
+            const BG_RX = 8;
+            const FONT_SIZE = 24; 
+
+            let isPanning = false; 
+            let currentMode = 'brush'; 
+            let isTextBackgroundEnabled = false; 
+            let canvasHistory = [];
+            let historyPointer = -1;
+            let isRedoing = false; 
+            let isFullMode = true; // V39.2 追蹤當前模式 (預設為全功能)
+
+            // 初始化畫布
+            const canvas = new fabric.Canvas('c', { 
+                isDrawingMode: false,
+                preserveObjectStacking: true, 
+                backgroundColor: null, 
+                width: initialWidth, 
+                height: initialHeight,
+                selection: false
+            });
+
+            const pencilBrush = new fabric.PencilBrush(canvas);
+            const brushSettings = {
+                brush: { width: 5, color: '#007bff' },
+                highlighter: { width: 30, color: '#ffff0080' },
+                eraser: { width: 40, color: 'rgba(0,0,0,1)' } 
+            };
+
+            // --- 2. DOM 元素快取 ---
+            const els = {
+                controlsWrapper: document.getElementById('controls-wrapper'), // 新增
+                toggleBtn: document.getElementById('toggle-control-mode'),     // 新增
+                wrapper: document.getElementById('canvas-wrapper'), 
+                container: document.getElementById('canvas-container'),
+                statusBar: document.getElementById('status-bar'), 
+                toolDisplay: document.getElementById('current-tool-display'),
+                color: document.getElementById('drawing-color'),
+                widthRange: document.getElementById('line-width-range'),
+                widthNumber: document.getElementById('line-width-number'),
+                resizeBtn: document.getElementById('resize-canvas-btn'),
+                saveBtn: document.getElementById('save-image-btn'),
+                bgInput: document.getElementById('background-image-input'),
+                clearBgBtn: document.getElementById('clear-background-btn'),
+                clearAllBtn: document.getElementById('clear-all-drawings-btn'),
+                addTextBtn: document.getElementById('add-text-btn'),
+                delBtn: document.getElementById('delete-selected-btn'),
+                undoBtn: document.getElementById('undo-btn'),
+                fullBtn: document.getElementById('fullscreen-btn'),
+                bgToggleBtn: document.getElementById('text-background-toggle-btn'),
+                widthW: document.getElementById('new-width'),
+                widthH: document.getElementById('new-height'),
+                brushBtn: document.getElementById('brush-mode-btn'),
+                highlighterBtn: document.getElementById('highlighter-mode-btn'),
+                eraserBtn: document.getElementById('eraser-mode-btn'),
+                selectBtn: document.getElementById('select-mode-btn'),
+                panBtn: document.getElementById('pan-mode-btn'),
+                tpl1: document.getElementById('insert-template-text-1-btn'),
+                tpl2: document.getElementById('insert-template-text-2-btn'),
+                tpl3: document.getElementById('insert-template-text-3-btn'),
+                dateBtn: document.getElementById('insert-date-stamp-btn')
+            };
+            
+            els.widthW.value = initialWidth;
+            els.widthH.value = initialHeight;
+
+            // --- V39.1 核心：自動縮放功能 ---
+            function fitCanvasToScreen() {
+                const wrapperWidth = els.wrapper.clientWidth; 
+                const canvasW = canvas.getWidth();
+                const canvasH = canvas.getHeight();
+                
+                let scale = (wrapperWidth - 20) / canvasW; 
+                if (scale > 1) scale = 1; 
+
+                els.container.style.transform = `scale(${scale})`;
+                
+                els.wrapper.style.height = (canvasH * scale + 20) + 'px'; 
+                
+                els.statusBar.textContent = `顯示比例: ${Math.round(scale * 100)}% (原始尺寸: ${canvasW} x ${canvasH} px)`;
+            }
+
+            // 監聽視窗大小變化
+            window.addEventListener('resize', fitCanvasToScreen);
+            // 初始執行一次
+            setTimeout(fitCanvasToScreen, 100);
+
+
+            // --- 3. 歷史記錄系統 ---
+            function updateHistoryButtons() {
+                if(els.undoBtn) els.undoBtn.disabled = historyPointer <= 0;
+            }
+
+            function saveCanvasState() {
+                if (isRedoing) { isRedoing = false; return; }
+                if (historyPointer < canvasHistory.length - 1) {
+                    canvasHistory = canvasHistory.slice(0, historyPointer + 1);
+                }
+                const json = canvas.toJSON(['isEraserPath', 'customType', 'textObject', 'rectObject', 'selectable', 'evented', 'id']);
+                canvasHistory.push(JSON.stringify(json));
+                historyPointer = canvasHistory.length - 1; 
+                updateHistoryButtons();
+            }
+
+            function undo() {
+                if (historyPointer <= 0) return; 
+                isRedoing = true;
+                historyPointer--; 
+                
+                canvas.loadFromJSON(canvasHistory[historyPointer], () => {
+                    sortLayers();
+                    canvas.renderAll();
+                    isRedoing = false; 
+                    updateHistoryButtons();
+                });
+            }
+
+            // --- 4. 圖層與選取邏輯 ---
+            function sortLayers() {
+                const objects = canvas.getObjects();
+                objects.forEach(obj => {
+                    if (obj.type === 'i-text' || obj.type === 'group' || obj.customType) {
+                        canvas.bringToFront(obj);
+                    }
+                    if (obj.isEraserPath) {
+                        obj.globalCompositeOperation = 'destination-out';
+                    } else if (obj.type === 'path') {
+                        obj.globalCompositeOperation = 'source-over';
+                    }
+                });
+            }
+
+            function setToolMode(mode) {
+                currentMode = mode;
+                els.toolDisplay.textContent = `(${
+                    mode === 'brush' ? '筆刷' :
+                    mode === 'highlighter' ? '螢光筆' :
+                    mode === 'eraser' ? '橡皮擦' :
+                    mode === 'select' ? '選取' :
+                    mode === 'pan' ? '平移' : 'N/A'
+                })`;
+                
+                document.querySelectorAll('.tool-and-style-controls button[data-mode]').forEach(btn => btn.classList.remove('active'));
+                const activeBtn = document.querySelector(`[data-mode="${mode}"]`);
+                if (activeBtn) activeBtn.classList.add('active');
+
+                canvas.isDrawingMode = false;
+                canvas.selection = false;
+                canvas.defaultCursor = 'default';
+                
+                // 鎖定/解鎖顏色和粗細控制
+                const isDrawingTool = (mode === 'brush' || mode === 'highlighter');
+                els.color.disabled = !isDrawingTool;
+                els.widthRange.disabled = !isDrawingTool;
+                els.widthNumber.disabled = !isDrawingTool;
+
+
+                // 設置物件的互動性 (只有在 Select 模式下才能選中物件)
+                canvas.forEachObject(obj => {
+                    const isInteractiveObj = (
+                        obj.type === 'i-text' || 
+                        obj.type === 'group' || 
+                        obj.customType === 'editable-text-group' ||
+                        obj.customType === 'stamp-group'
+                    );
+                    const isDrawingPath = (obj.type === 'path' && !obj.isEraserPath);
+
+                    if (mode === 'select') {
+                        if (isInteractiveObj || isDrawingPath) {
+                            obj.set({ selectable: true, evented: true });
+                        }
+                    } else {
+                        obj.set({ selectable: false, evented: false });
+                    }
+                });
+                
+                // 設置畫布屬性和游標
+                if (mode === 'pan') {
+                    canvas.defaultCursor = 'grab'; return;
+                }
+                if (mode === 'select') {
+                    canvas.selection = true; return;
+                }
+                
+                // 繪圖模式
+                canvas.isDrawingMode = true;
+                if (mode === 'eraser') {
+                    canvas.freeDrawingBrush = pencilBrush;
+                    canvas.freeDrawingBrush.color = 'rgba(0,0,0,1)';
+                    canvas.freeDrawingBrush.width = brushSettings.eraser.width;
+                    canvas.defaultCursor = 'crosshair';
+                } else {
+                    const setting = brushSettings[mode];
+                    canvas.freeDrawingBrush = pencilBrush;
+                    canvas.freeDrawingBrush.color = setting.color;
+                    canvas.freeDrawingBrush.width = setting.width;
+                    
+                    els.widthRange.value = setting.width;
+                    els.widthNumber.value = setting.width;
+                    els.color.value = setting.color.substring(0, 7); 
+                }
+            }
+
+            // --- 5. 物件建立邏輯 ---
+            function createGroupedObject(textString, bgColor, isEditable, txtColor='#000') {
+                const textObj = new fabric.Text(textString, {
+                    fontFamily: 'Arial', fontSize: FONT_SIZE, fill: txtColor,
+                    originX: 'center', originY: 'center'
+                });
+                const rectObj = new fabric.Rect({
+                    width: textObj.width + (BG_PADDING * 2),
+                    height: textObj.height + (BG_PADDING * 2),
+                    fill: bgColor, rx: BG_RX, ry: BG_RX,
+                    originX: 'center', originY: 'center', strokeWidth: 0
+                });
+                const group = new fabric.Group([rectObj, textObj], {
+                    left: canvas.width / 2, 
+                    top: canvas.height / 2,
+                    originX: 'center', originY: 'center',
+                    subTargetCheck: true,   
+                    customType: isEditable ? 'editable-text-group' : 'stamp-group',
+                    _textStr: textString,
+                    selectable: true, 
+                    evented: true
+                });
+                canvas.add(group);
+                canvas.setActiveObject(group);
+                sortLayers(); 
+                saveCanvasState();
+            }
+
+            // --- 6. 事件監聽 ---
+            canvas.on('path:created', (e) => {
+                const path = e.path;
+                path.isEraserPath = (currentMode === 'eraser');
+                if (path.isEraserPath) {
+                    path.globalCompositeOperation = 'destination-out';
+                    path.stroke = 'rgba(0,0,0,1)';
+                    path.selectable = false; path.evented = false; 
+                } else {
+                    path.globalCompositeOperation = 'source-over';
+                    path.selectable = false; path.evented = false;
+                }
+                sortLayers(); 
+                saveCanvasState();
+            });
+
+            // 雙擊進入文字編輯
+            canvas.on('mouse:dblclick', (opt) => {
+                const target = opt.target;
+                if (!target) return;
+                
+                let originalText, originalFill, groupLeft, groupTop, groupScaleX, groupScaleY, groupAngle;
+
+                if (target.customType === 'editable-text-group') {
+                    // 帶背景的群組
+                    const objs = target.getObjects();
+                    const originalTextObj = objs.find(o => o.type === 'text' || o.type === 'i-text');
+                    originalText = originalTextObj ? originalTextObj.text : 'Text';
+                    originalFill = originalTextObj ? originalTextObj.fill : '#000';
+                    groupLeft = target.left;
+                    groupTop = target.top;
+                    groupScaleX = target.scaleX;
+                    groupScaleY = target.scaleY;
+                    groupAngle = target.angle;
+                    canvas.remove(target);
+                } else if (target.type === 'i-text') {
+                    // 純文字物件
+                    originalText = target.text;
+                    originalFill = target.fill;
+                    groupLeft = target.left;
+                    groupTop = target.top;
+                    groupScaleX = target.scaleX;
+                    groupScaleY = target.scaleY;
+                    groupAngle = target.angle;
+                    canvas.remove(target);
+                } else {
+                    return;
+                }
+
+                const editableIText = new fabric.IText(originalText, {
+                    left: groupLeft, top: groupTop,
+                    originX: 'center', originY: 'center',
+                    fontFamily: 'Arial', fontSize: FONT_SIZE, fill: originalFill,
+                    scaleX: groupScaleX, scaleY: groupScaleY, angle: groupAngle,
+                    _isTempEditing: true, 
+                    _groupScaleX: groupScaleX, _groupScaleY: groupScaleY,
+                    _wasGrouped: target.customType === 'editable-text-group' // 紀錄原本是否有背景
+                });
+
+                canvas.add(editableIText);
+                canvas.setActiveObject(editableIText);
+                editableIText.enterEditing();
+                editableIText.selectAll(); 
+                canvas.renderAll();
+            });
+
+            // 離開文字編輯時重新組合成群組或 IText
+            canvas.on('text:editing:exited', (e) => {
+                const obj = e.target;
+                if (obj._isTempEditing) { 
+                    const newText = obj.text;
+                    const {left, top, angle, scaleX, scaleY} = obj;
+                    const wasGrouped = obj._wasGrouped;
+
+                    canvas.remove(obj);
+
+                    if (wasGrouped || isTextBackgroundEnabled) {
+                         // 重新創建 Group (如果有背景需求或原本就有背景)
+                        const textObj = new fabric.Text(newText, {
+                            fontFamily: 'Arial', fontSize: FONT_SIZE, fill: '#000',
+                            originX: 'center', originY: 'center'
+                        });
+                        const rectObj = new fabric.Rect({
+                            width: textObj.width + (BG_PADDING * 2),
+                            height: textObj.height + (BG_PADDING * 2),
+                            fill: 'rgba(255, 255, 255, 1)', rx: BG_RX, ry: BG_RX,
+                            originX: 'center', originY: 'center', strokeWidth: 0
+                        });
+                        const newGroup = new fabric.Group([rectObj, textObj], {
+                            left, top, angle,
+                            scaleX, scaleY,
+                            originX: 'center', originY: 'center',
+                            subTargetCheck: true,
+                            customType: 'editable-text-group',
+                            selectable: true, evented: true
+                        });
+                        canvas.add(newGroup);
+                        canvas.setActiveObject(newGroup);
+                    } else {
+                        // 重新創建純 IText (原本無背景且背景開關關閉)
+                        const newIText = new fabric.IText(newText, {
+                            left, top, angle, scaleX, scaleY,
+                            originX: 'center', originY: 'center',
+                            fontFamily: 'Arial', fontSize: FONT_SIZE, fill: '#000',
+                            selectable: true, evented: true
+                        });
+                        canvas.add(newIText);
+                        canvas.setActiveObject(newIText);
+                    }
+                    sortLayers();
+                }
+                saveCanvasState();
+            });
+            
+            canvas.on('object:modified', saveCanvasState);
+
+            // --- 7. UI 按鈕綁定 ---
+            
+            // V39.2 核心: 切換模式邏輯
+            els.toggleBtn.addEventListener('click', () => {
+                isFullMode = !isFullMode;
+                if (isFullMode) {
+                    els.controlsWrapper.classList.remove('simplified-mode');
+                    els.controlsWrapper.classList.add('full-mode');
+                    els.toggleBtn.innerHTML = '<i class="fa-solid fa-compress"></i> 切換為精簡版控制項';
+                } else {
+                    els.controlsWrapper.classList.remove('full-mode');
+                    els.controlsWrapper.classList.add('simplified-mode');
+                    els.toggleBtn.innerHTML = '<i class="fa-solid fa-expand"></i> 切換為全功能控制項';
+                    
+                    // 離開繪圖/平移模式，避免隱藏控制項後操作混亂
+                    setToolMode('select'); 
+                }
+                // 由於工具切換到 Select 模式，這裡需要手動更新 Display
+                els.toolDisplay.textContent = '(選取)';
+            });
+
+            // 繪圖模式按鈕 (僅在全功能面板)
+            [els.brushBtn, els.highlighterBtn, els.eraserBtn, els.selectBtn, els.panBtn].forEach(btn => {
+                if(btn) btn.addEventListener('click', () => setToolMode(btn.dataset.mode));
+            });
+            
+            els.undoBtn.addEventListener('click', undo);
+
+            // 粗細控制
+            els.widthRange.addEventListener('input', function() { 
+                const val = parseInt(this.value, 10);
+                els.widthNumber.value = val;
+                brushSettings[currentMode].width = val;
+                if(canvas.isDrawingMode) canvas.freeDrawingBrush.width = val;
+            });
+            els.widthNumber.addEventListener('change', function() { 
+                const val = parseInt(this.value, 10);
+                els.widthRange.value = val;
+                brushSettings[currentMode].width = val;
+                if(canvas.isDrawingMode) canvas.freeDrawingBrush.width = val;
+            });
+
+            // 顏色控制
+            els.color.addEventListener('change', function() {
+                 if(currentMode !== 'eraser') {
+                     const c = (currentMode === 'highlighter') ? this.value + '80' : this.value; 
+                     brushSettings[currentMode].color = c;
+                     if(canvas.isDrawingMode) canvas.freeDrawingBrush.color = c;
+                 }
+            });
+            
+            // 顏色快速選單
+            document.querySelectorAll('.color-palette-btn').forEach(b => {
+                b.addEventListener('click', function() {
+                    const mode = this.dataset.target;
+                    const color = this.dataset.color;
+                    
+                    if (mode === 'highlighter') {
+                        brushSettings.highlighter.color = color + '80'; 
+                        setToolMode('highlighter');
+                    } else {
+                        brushSettings.brush.color = color;
+                        setToolMode('brush');
+                    }
+                });
+            });
+
+            // 新增文字方塊
+            els.addTextBtn.addEventListener('click', () => {
+                setToolMode('select'); 
+                if (isTextBackgroundEnabled) {
+                    createGroupedObject('請輸入...', 'rgba(255,255,255,1)', true);
+                } else {
+                    const text = new fabric.IText('請輸入...', {
+                        left: canvas.width / 2, 
+                        top: canvas.height / 2,
+                        fontFamily: 'Arial', fontSize: FONT_SIZE, fill: '#000',
+                        originX: 'center', originY: 'center',
+                        selectable: true, evented: true
+                    });
+                    canvas.add(text);
+                    canvas.setActiveObject(text);
+                    text.enterEditing();
+                    text.selectAll();
+                    sortLayers();
+                    saveCanvasState();
+                }
+            });
+
+            // 文字背景切換
+            els.bgToggleBtn.addEventListener('click', () => {
+                isTextBackgroundEnabled = !isTextBackgroundEnabled;
+                els.bgToggleBtn.textContent = isTextBackgroundEnabled ? '🟩 背景: 開' : '⬜ 背景: 關';
+                els.bgToggleBtn.classList.toggle('active');
+            });
+
+            // 插入樣板文字
+            const addStamp = (txt, color='#000') => createGroupedObject(txt, 'rgba(255,255,255,1)', false, color);
+            els.tpl1.addEventListener('click', () => addStamp("【術前】"));
+            els.tpl2.addEventListener('click', () => addStamp("【術中】"));
+            els.tpl3.addEventListener('click', () => addStamp("【術後】"));
+            els.dateBtn.addEventListener('click', () => {
+                const d = new Date();
+                const s = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                addStamp("日期: " + s, '#B30000');
+            });
+
+            // 調整畫布尺寸 (全功能模式)
+            els.resizeBtn.addEventListener('click', () => {
+                const w = parseInt(els.widthW.value), h = parseInt(els.widthH.value);
+                if(w>=300 && h>=300) {
+                    canvas.setDimensions({width: w, height: h});
+                    canvas.width = w; canvas.height = h; 
+                    els.container.style.width = w + 'px';
+                    els.container.style.height = h + 'px';
+                    
+                    fitCanvasToScreen(); 
+                    saveCanvasState();
+                }
+            });
+
+            // 導入底圖
+            els.bgInput.addEventListener('change', (e) => {
+                const f = e.target.files[0];
+                if(!f) return;
+                const r = new FileReader();
+                r.onload = (ev) => {
+                    els.container.style.backgroundImage = `url(${ev.target.result})`;
+                    els.container.style.backgroundSize = 'contain';
+                    els.container.style.backgroundRepeat = 'no-repeat';
+                    els.container.style.backgroundPosition = 'center';
+                    saveCanvasState(); 
+                };
+                r.readAsDataURL(f);
+                e.target.value = '';
+            });
+
+            // 清除底圖 (全功能模式)
+            els.clearBgBtn.addEventListener('click', () => {
+                els.container.style.backgroundImage = 'none';
+            });
+
+            // 清除所有筆跡 (全功能模式)
+            els.clearAllBtn.addEventListener('click', () => {
+                canvas.getObjects().forEach(obj => {
+                    if (obj.type === 'path' || obj.type === 'i-text' || obj.type === 'group') {
+                        canvas.remove(obj);
+                    }
+                });
+                canvas.renderAll();
+                saveCanvasState();
+            });
+
+            // 刪除選取的物件 (全功能模式)
+            els.delBtn.addEventListener('click', () => {
+                const actives = canvas.getActiveObjects();
+                if(actives.length) {
+                    canvas.remove(...actives);
+                    canvas.discardActiveObject().renderAll();
+                    saveCanvasState();
+                }
+            });
+
+            // 鍵盤 Delete/Backspace 刪除
+            document.addEventListener('keydown', (e) => {
+                if((e.key === 'Delete' || e.key === 'Backspace')) {
+                    const obj = canvas.getActiveObject();
+                    if(obj && !obj.isEditing) els.delBtn.click();
+                }
+            });
+
+            // 儲存圖片 (V39.1 最終優化：1:1 原生解析度存檔)
+            els.saveBtn.addEventListener('click', function() {
+                const btn = this;
+                btn.disabled = true;
+                btn.textContent = '💾 處理中...';
+
+                canvas.discardActiveObject();
+                canvas.renderAll();
+
+                setTimeout(() => {
+                    if(typeof html2canvas === 'undefined') { console.error('找不到 html2canvas 函式庫，無法截圖。'); return; }
+
+                    const originalTransform = els.container.style.transform;
+                    els.container.style.transform = 'none';
+                    
+                    html2canvas(els.container, {
+                        useCORS: true,
+                        scale: 1, 
+                        logging: false,
+                        backgroundColor: '#ffffff', 
+                    }).then(function(shot) {
+                        
+                        els.container.style.transform = originalTransform;
+
+                        const now = new Date();
+                        const pad = (n) => String(n).padStart(2, '0');
+                        const timeStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+                        const filename = `medical-note-${timeStr}.jpg`;
+
+                        const image = shot.toDataURL("image/jpeg", 1.0);
+                        
+                        const link = document.createElement('a');
+                        link.download = filename;
+                        link.href = image;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+
+                        btn.disabled = false;
+                        btn.textContent = '💾 儲存為 JPG';
+                    }).catch(err => {
+                        console.error("截圖失敗:", err);
+                        // 不使用 alert
+                        btn.disabled = false;
+                        btn.textContent = '💾 儲存為 JPG';
+                        els.container.style.transform = originalTransform;
+                    });
+                }, 100); 
+            });
+
+            // 全螢幕按鈕 (全功能模式)
+            els.fullBtn.addEventListener('click', () => {
+                 const d = document.documentElement;
+                 if(!document.fullscreenElement) {
+                     d.requestFullscreen().catch(()=>{});
+                     els.fullBtn.innerHTML = '<i class="fa-solid fa-compress"></i> 退出全螢幕';
+                 } else {
+                     document.exitFullscreen();
+                     els.fullBtn.innerHTML = '🖥️ 全螢幕';
+                 }
+            });
+
+            // 平移事件
+            canvas.on('mouse:down', opt => {
+                if (currentMode === 'pan' && opt.e.button === 0) {
+                    isPanning = true; canvas.defaultCursor = 'grabbing';
+                }
+            });
+            canvas.on('mouse:move', opt => {
+                if (isPanning && currentMode === 'pan') {
+                    canvas.relativePan(new fabric.Point(opt.e.movementX, opt.e.movementY));
+                }
+            });
+            canvas.on('mouse:up', () => {
+                isPanning = false;
+                if (currentMode === 'pan') canvas.defaultCursor = 'grab';
+            });
+
+            // 啟動
+            setToolMode('brush');
+            saveCanvasState();
+        });
+    </script>
